@@ -38,7 +38,7 @@ app.add_middleware(
 )
 
 # MongoDB connection
-MONGO_URL = os.environ.get('MONGO_URL', 'mongodb+srv://nexorasim:3QBDdxfN1tlTRq60@nexorasim.t7tiwco.mongodb.net/')
+MONGO_URL = os.environ.get('MONGO_URL', 'mongodb://localhost:27017/esim_management')
 client = MongoClient(MONGO_URL)
 db = client.esim_management
 esim_profiles = db.esim_profiles
