@@ -51,8 +51,8 @@ class eSIMProfile(BaseModel):
     description: Optional[str] = Field(default="", max_length=500)
     activationCode: str = Field(..., min_length=1)
     smdpServerUrl: str = Field(..., min_length=1)
-    provider: str = Field(..., regex="^(ATOM|Ooredoo|Mytel|MPT)$")
-    status: str = Field(default="created", regex="^(created|deployed|active|inactive|error)$")
+    provider: str = Field(..., pattern="^(ATOM|Ooredoo|Mytel|MPT)$")
+    status: str = Field(default="created", pattern="^(created|deployed|active|inactive|error)$")
     createdAt: Optional[datetime] = Field(default_factory=datetime.utcnow)
     updatedAt: Optional[datetime] = Field(default_factory=datetime.utcnow)
 
