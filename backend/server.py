@@ -155,6 +155,10 @@ async def create_esim_profile(profile: eSIMProfile):
         
         logger.info(f"Created eSIM profile: {profile.displayName}")
         
+        # Convert datetime to ISO format for JSON serialization
+        profile_dict["createdAt"] = profile_dict["createdAt"].isoformat()
+        profile_dict["updatedAt"] = profile_dict["updatedAt"].isoformat()
+        
         return {
             "success": True,
             "message": "eSIM profile created successfully",
