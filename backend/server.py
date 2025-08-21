@@ -61,8 +61,8 @@ class eSIMProfileUpdate(BaseModel):
     description: Optional[str] = Field(None, max_length=500)
     activationCode: Optional[str] = Field(None, min_length=1)
     smdpServerUrl: Optional[str] = Field(None, min_length=1)
-    provider: Optional[str] = Field(None, regex="^(ATOM|Ooredoo|Mytel|MPT)$")
-    status: Optional[str] = Field(None, regex="^(created|deployed|active|inactive|error)$")
+    provider: Optional[str] = Field(None, pattern="^(ATOM|Ooredoo|Mytel|MPT)$")
+    status: Optional[str] = Field(None, pattern="^(created|deployed|active|inactive|error)$")
 
 class DeploymentRequest(BaseModel):
     profileId: str
