@@ -2,6 +2,7 @@
   "name": "esim-management-frontend",
   "version": "1.0.0",
   "description": "eSIM Management Webapp Frontend",
+  "type": "module",
   "private": true,
   "dependencies": {
     "react": "^18.2.0",
