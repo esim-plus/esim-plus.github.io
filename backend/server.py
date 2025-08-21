@@ -150,6 +150,10 @@ async def create_esim_profile(profile: eSIMProfile):
         
         result = esim_profiles.insert_one(profile_dict)
         
+        # Remove the MongoDB _id field for JSON serialization
+        if '_id' in profile_dict:
+            del profile_dict['_id']
+        
         # Log operation
         log_operation("CREATE", profile.id, "success", {"profileName": profile.displayName})
         
