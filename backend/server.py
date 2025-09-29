@@ -442,7 +442,7 @@ async def create_tenant(tenant: Tenant, current_user: dict = Depends(get_current
     
     try:
         tenant_dict = tenant.dict()
-        result = tenants.insert_one(tenant_dict)
+        tenants.insert_one(tenant_dict)
         
         if '_id' in tenant_dict:
             del tenant_dict['_id']
