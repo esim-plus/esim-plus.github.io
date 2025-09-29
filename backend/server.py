@@ -499,7 +499,7 @@ async def create_esim_profile(profile: eSIMProfile, current_user: dict = Depends
         profile_dict["createdAt"] = datetime.utcnow()
         profile_dict["updatedAt"] = datetime.utcnow()
         
-        result = esim_profiles.insert_one(profile_dict)
+        esim_profiles.insert_one(profile_dict)
         
         # Generate QR code
         qr_code = generate_qr_code(profile_dict)
