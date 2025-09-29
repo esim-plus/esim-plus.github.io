@@ -434,6 +434,365 @@ async def login(username: str, password: str):
         logger.error(f"Login failed: {str(e)}")
         raise HTTPException(status_code=500, detail="Login failed")
 
+# Tenant Management API
+@app.post("/api/tenants/create", response_model=dict)
+async def create_tenant(tenant: Tenant, current_user: dict = Depends(get_current_user)):
+    """Create new tenant (admin only)"""
+    check_permission(current_user, required_role="admin")
+    
+    try:
+        tenant_dict = tenant.dict()
+        result = tenants.insert_one(tenant_dict)
+        
+        if '_id' in tenant_dict:
+            del tenant_dict['_id']
+        
+        log_compliance_activity(current_user, "CREATE_TENANT", "tenant", tenant.id, {"tenantName": tenant.name})
+        
+        return {
+            "success": True,
+            "message": "Tenant created successfully",
+            "tenant": tenant_dict
+        }
+    except Exception as e:
+        logger.error(f"Failed to create tenant: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to create tenant: {str(e)}")
+
+@app.get("/api/tenants/list")
+async def list_tenants(current_user: dict = Depends(get_current_user)):
+    """List all tenants (admin only)"""
+    check_permission(current_user, required_role="admin")
+    
+    try:
+        tenant_list = list(tenants.find({}).sort("createdAt", -1))
+        
+        for tenant in tenant_list:
+            if '_id' in tenant:
+                del tenant['_id']
+            if 'createdAt' in tenant:
+                tenant['createdAt'] = tenant['createdAt'].isoformat()
+        
+        return {
+            "success": True,
+            "tenants": tenant_list,
+            "total": len(tenant_list)
+        }
+    except Exception as e:
+        logger.error(f"Failed to list tenants: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to list tenants: {str(e)}")
+
+# Enhanced eSIM Profile Management
+@app.post("/api/esim/create", response_model=dict)
+async def create_esim_profile(profile: eSIMProfile, current_user: dict = Depends(get_current_user)):
+    """Create new eSIM profile with multi-tenancy and RBAC"""
+    check_permission(current_user, required_role="operator", tenant_id=profile.tenantId)
+    
+    try:
+        # Validate tenant exists
+        tenant = tenants.find_one({"id": profile.tenantId, "isActive": True})
+        if not tenant:
+            raise HTTPException(status_code=400, detail="Invalid or inactive tenant")
+        
+        # Set creator information
+        profile_dict = profile.dict()
+        profile_dict["createdBy"] = current_user["id"]
+        profile_dict["createdAt"] = datetime.utcnow()
+        profile_dict["updatedAt"] = datetime.utcnow()
+        
+        result = esim_profiles.insert_one(profile_dict)
+        
+        # Generate QR code
+        qr_code = generate_qr_code(profile_dict)
+        if qr_code:
+            profile_dict["qrCodeId"] = qr_code["id"]
+            esim_profiles.update_one({"id": profile.id}, {"$set": {"qrCodeId": qr_code["id"]}})
+        
+        # Clean up for response
+        if '_id' in profile_dict:
+            del profile_dict['_id']
+        
+        # Log compliance activity
+        log_compliance_activity(current_user, "CREATE_PROFILE", "esim_profile", profile.id, {
+            "profileName": profile.displayName,
+            "provider": profile.provider
+        })
+        
+        logger.info(f"Created eSIM profile: {profile.displayName} for tenant: {profile.tenantId}")
+        
+        return {
+            "success": True,
+            "message": "eSIM profile created successfully",
+            "profileId": profile.id,
+            "profile": profile_dict,
+            "qrCode": qr_code
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to create eSIM profile: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to create eSIM profile: {str(e)}")
+
+@app.get("/api/esim/list")
+async def list_esim_profiles(skip: int = 0, limit: int = 100, provider: str = None, current_user: dict = Depends(get_current_user)):
+    """List eSIM profiles with tenant isolation"""
+    try:
+        # Build query with tenant isolation
+        query = {"tenantId": current_user["tenantId"]}
+        if provider and provider in VALID_PROVIDERS:
+            query["provider"] = provider
+        
+        profiles = list(esim_profiles.find(query).skip(skip).limit(limit).sort("createdAt", -1))
+        
+        # Clean up profiles for response
+        for profile in profiles:
+            if '_id' in profile:
+                del profile['_id']
+            if 'createdAt' in profile:
+                profile['createdAt'] = profile['createdAt'].isoformat()
+            if 'updatedAt' in profile:
+                profile['updatedAt'] = profile['updatedAt'].isoformat()
+        
+        total_count = esim_profiles.count_documents(query)
+        
+        return {
+            "success": True,
+            "profiles": profiles,
+            "total": total_count,
+            "skip": skip,
+            "limit": limit,
+            "tenantId": current_user["tenantId"]
+        }
+    except Exception as e:
+        logger.error(f"Failed to list eSIM profiles: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to list eSIM profiles: {str(e)}")
+
+@app.get("/api/esim/{profile_id}")
+async def get_esim_profile(profile_id: str, current_user: dict = Depends(get_current_user)):
+    """Get specific eSIM profile with tenant isolation"""
+    try:
+        profile = esim_profiles.find_one({"id": profile_id, "tenantId": current_user["tenantId"]})
+        
+        if not profile:
+            raise HTTPException(status_code=404, detail="eSIM profile not found")
+        
+        # Clean up response
+        if '_id' in profile:
+            del profile['_id']
+        if 'createdAt' in profile:
+            profile['createdAt'] = profile['createdAt'].isoformat()
+        if 'updatedAt' in profile:
+            profile['updatedAt'] = profile['updatedAt'].isoformat()
+        
+        return {
+            "success": True,
+            "profile": profile
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get eSIM profile: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to get eSIM profile: {str(e)}")
+
+@app.post("/api/esim/deploy")
+async def deploy_esim_profile(deployment_data: dict, current_user: dict = Depends(get_current_user)):
+    """Deploy eSIM profile with enhanced compliance logging"""
+    check_permission(current_user, required_role="operator")
+    
+    try:
+        profile_id = deployment_data.get("profileId")
+        target_device_id = deployment_data.get("targetDeviceId")
+        deployment_notes = deployment_data.get("deploymentNotes", "")
+        
+        # Check if profile exists and belongs to user's tenant
+        profile = esim_profiles.find_one({"id": profile_id, "tenantId": current_user["tenantId"]})
+        if not profile:
+            raise HTTPException(status_code=404, detail="eSIM profile not found")
+        
+        # Update profile status to deploying
+        esim_profiles.update_one(
+            {"id": profile_id},
+            {"$set": {"status": "deploying", "updatedAt": datetime.utcnow()}}
+        )
+        
+        # Execute PowerShell deployment
+        ps_result = execute_powershell_deployment(profile, target_device_id)
+        
+        # Update profile status based on result
+        new_status = "deployed" if ps_result.get("success") else "error"
+        update_data = {
+            "status": new_status,
+            "updatedAt": datetime.utcnow()
+        }
+        
+        if target_device_id:
+            update_data["deviceId"] = target_device_id
+        
+        esim_profiles.update_one({"id": profile_id}, {"$set": update_data})
+        
+        # Log compliance activity
+        log_compliance_activity(current_user, "DEPLOY_PROFILE", "esim_profile", profile_id, {
+            "targetDevice": target_device_id,
+            "deploymentResult": ps_result,
+            "notes": deployment_notes
+        })
+        
+        if ps_result.get("success"):
+            logger.info(f"Successfully deployed eSIM profile: {profile_id}")
+            return {
+                "success": True,
+                "message": "eSIM profile deployed successfully",
+                "profileId": profile_id,
+                "deploymentResult": ps_result
+            }
+        else:
+            logger.error(f"Failed to deploy eSIM profile: {ps_result}")
+            return {
+                "success": False,
+                "message": "eSIM profile deployment failed",
+                "profileId": profile_id,
+                "error": ps_result.get("error", "Unknown deployment error"),
+                "deploymentResult": ps_result
+            }
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to deploy eSIM profile: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to deploy eSIM profile: {str(e)}")
+
+# QR Code Management API
+@app.get("/api/qr/{profile_id}")
+async def get_qr_code(profile_id: str, current_user: dict = Depends(get_current_user)):
+    """Get QR code for eSIM profile"""
+    try:
+        # Verify profile access
+        profile = esim_profiles.find_one({"id": profile_id, "tenantId": current_user["tenantId"]})
+        if not profile:
+            raise HTTPException(status_code=404, detail="eSIM profile not found")
+        
+        # Get QR code
+        qr_code = qr_codes.find_one({"profileId": profile_id, "isActive": True})
+        if not qr_code:
+            # Generate new QR code if none exists
+            qr_code = generate_qr_code(profile)
+            if not qr_code:
+                raise HTTPException(status_code=500, detail="Failed to generate QR code")
+        
+        # Check expiration
+        if qr_code.get("expiresAt") and qr_code["expiresAt"] < datetime.utcnow():
+            # Generate new QR code
+            qr_codes.update_one({"id": qr_code["id"]}, {"$set": {"isActive": False}})
+            qr_code = generate_qr_code(profile)
+        
+        # Clean up response
+        if '_id' in qr_code:
+            del qr_code['_id']
+        if 'createdAt' in qr_code:
+            qr_code['createdAt'] = qr_code['createdAt'].isoformat()
+        if 'expiresAt' in qr_code:
+            qr_code['expiresAt'] = qr_code['expiresAt'].isoformat()
+        
+        return {
+            "success": True,
+            "qrCode": qr_code
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get QR code: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to get QR code: {str(e)}")
+
+# Device Migration API
+@app.post("/api/migration/initiate")
+async def initiate_device_migration(migration_data: dict, current_user: dict = Depends(get_current_user)):
+    """Initiate device migration for eSIM profile"""
+    check_permission(current_user, required_role="operator")
+    
+    try:
+        profile_id = migration_data.get("profileId")
+        source_device_id = migration_data.get("sourceDeviceId")
+        target_device_id = migration_data.get("targetDeviceId")
+        migration_notes = migration_data.get("migrationNotes", "")
+        
+        # Verify profile exists and belongs to user's tenant
+        profile = esim_profiles.find_one({"id": profile_id, "tenantId": current_user["tenantId"]})
+        if not profile:
+            raise HTTPException(status_code=404, detail="eSIM profile not found")
+        
+        # Create migration record
+        migration = DeviceMigration(
+            profileId=profile_id,
+            tenantId=current_user["tenantId"],
+            sourceDeviceId=source_device_id,
+            targetDeviceId=target_device_id,
+            initiatedBy=current_user["id"],
+            migrationNotes=migration_notes
+        )
+        
+        migration_dict = migration.dict()
+        device_migrations.insert_one(migration_dict)
+        
+        # Update profile status
+        esim_profiles.update_one(
+            {"id": profile_id},
+            {"$set": {"status": "migrating", "updatedAt": datetime.utcnow()}}
+        )
+        
+        # Log compliance activity
+        log_compliance_activity(current_user, "INITIATE_MIGRATION", "device_migration", migration.id, {
+            "profileId": profile_id,
+            "sourceDevice": source_device_id,
+            "targetDevice": target_device_id
+        })
+        
+        # Clean up response
+        if '_id' in migration_dict:
+            del migration_dict['_id']
+        
+        return {
+            "success": True,
+            "message": "Device migration initiated successfully",
+            "migration": migration_dict
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to initiate device migration: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to initiate device migration: {str(e)}")
+
+# Compliance and Audit API
+@app.get("/api/compliance/logs")
+async def get_compliance_logs(skip: int = 0, limit: int = 100, operation: str = None, current_user: dict = Depends(get_current_user)):
+    """Get compliance audit logs"""
+    check_permission(current_user, required_role="admin")
+    
+    try:
+        query = {"tenantId": current_user["tenantId"]}
+        if operation:
+            query["operation"] = operation
+        
+        logs = list(compliance_logs.find(query).skip(skip).limit(limit).sort("timestamp", -1))
+        
+        # Clean up logs for response
+        for log in logs:
+            if '_id' in log:
+                del log['_id']
+            if 'timestamp' in log:
+                log['timestamp'] = log['timestamp'].isoformat()
+        
+        total_count = compliance_logs.count_documents(query)
+        
+        return {
+            "success": True,
+            "logs": logs,
+            "total": total_count,
+            "skip": skip,
+            "limit": limit
+        }
+    except Exception as e:
+        logger.error(f"Failed to get compliance logs: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to get compliance logs: {str(e)}")
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8001)
