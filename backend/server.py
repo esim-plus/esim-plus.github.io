@@ -109,7 +109,7 @@ VALID_STATUSES = ["created", "deployed", "active", "inactive", "error", "migrati
 class UserCreate(BaseModel):
     username: str = Field(..., min_length=3, max_length=50)
     password: str = Field(..., min_length=8)
-    email: str = Field(..., regex=r'^[\w\.-]+@[\w\.-]+\.\w+$')
+    email: str = Field(..., pattern=r'^[\w\.-]+@[\w\.-]+\.\w+$')
     role: str = Field(..., pattern="^(admin|operator|viewer)$")
     tenantId: str
     fullName: str = Field(..., min_length=1, max_length=100)
