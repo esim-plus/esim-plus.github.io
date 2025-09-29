@@ -1,3 +1,10 @@
 [user]
-	email = github@emergent.sh
-	name = emergent-agent-e1
+	name = eSIM Plus Admin
+	email = admin@esimplus.onmicrosoft.com
+[core]
+	autocrlf = true
+	editor = code
+[init]
+	defaultBranch = main
+[push]
+	default = simple

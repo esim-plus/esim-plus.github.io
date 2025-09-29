@@ -2,7 +2,7 @@ from fastapi import FastAPI, HTTPException, status, Depends, Security
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pymongo import MongoClient, IndexModel
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
 from datetime import datetime, timedelta
 from passlib.context import CryptContext
@@ -17,6 +17,7 @@ import io
 import base64
 import requests
 from dotenv import load_dotenv
+import re
 
 # Load environment variables
 load_dotenv()
@@ -34,8 +35,8 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title="eSIM Plus Management API",
-    description="Enterprise eSIM Management API for MPT/ATOM/OOREDOO/MYTEL providers with multi-tenancy, RBAC, and compliance",
-    version="2.0.0"
+    description="Enterprise eSIM Management API for MPT ATOM OOREDOO MYTEL providers with multi-tenancy RBAC and compliance",
+    version="3.0.0"
 )
 
 # Security configuration
@@ -354,7 +355,7 @@ def execute_powershell_deployment(profile: dict, target_device_id: str = None) -
 async def root():
     return {
         "message": "eSIM Plus Management API",
-        "version": "2.0.0",
+        "version": "3.0.0",
         "providers": VALID_PROVIDERS,
         "features": [
             "Multi-tenancy",

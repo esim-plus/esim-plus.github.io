@@ -1,0 +1,60 @@
+version: '3.8'
+
+services:
+  mongodb:
+    image: mongo:7.0
+    container_name: esim-mongodb
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: password123
+      MONGO_INITDB_DATABASE: esim_management
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+    networks:
+      - esim-network
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: esim-backend
+    restart: unless-stopped
+    environment:
+      MONGO_URL: mongodb://admin:password123@mongodb:27017/esim_management
+      GRAPH_CLIENT_ID: ${GRAPH_CLIENT_ID}
+      GRAPH_CLIENT_SECRET: ${GRAPH_CLIENT_SECRET}
+      GRAPH_TENANT_ID: esimplus.onmicrosoft.com
+      ADMIN_IDENTITY: admin@esimplus.onmicrosoft.com
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
+    ports:
+      - "8001:8001"
+    depends_on:
+      - mongodb
+    networks:
+      - esim-network
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: esim-frontend
+    restart: unless-stopped
+    environment:
+      REACT_APP_API_URL: http://localhost:8001
+      REACT_APP_TENANT_ID: esimplus.onmicrosoft.com
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    networks:
+      - esim-network
+
+volumes:
+  mongodb_data:
+
+networks:
+  esim-network:
+    driver: bridge

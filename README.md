@@ -1,6 +1,6 @@
-# Zero-Manual eSIM Provisioning System
+# Zero-Manual eSIM Provisioning System v3.0
 
-Enterprise-grade eSIM management platform for Myanmar telecom operators with Microsoft Intune integration, multi-tenant isolation, and regulatory compliance.
+Enterprise-grade eSIM management platform for Myanmar telecom operators with Microsoft Intune integration, multi-tenant isolation, regulatory compliance, and automated text validation.
 
 ## Quick Start
 
@@ -27,6 +27,10 @@ cd provisioning-system
 - Device migration workflows
 - Compliance audit logging
 - Microsoft Intune integration
+- Automated text validation
+- Emoji-free content enforcement
+- GitHub Actions CI/CD
+- Docker containerization
 
 ## Architecture
 
